@@ -58,10 +58,52 @@ class Chill:
 
     return file_content
 
+  def __xor(self, hex_string1, hex_string2):
+    return format(int(hex(int(hex_string1, 16) ^ int(hex_string2, 16)), 0), 'X')
+
+  def __round_function(self, right_block, round_key):
+    # TODO: transform to matrix
+    # TODO: SubX+
+    # TODO: L Transposition
+    # TODO: ShiftCol
+    # TODO: transform to string
+    return []
+
+  def __generate_round_key(self, round_key):
+    # TODO: transform to matrix
+    # TODO: RotMod
+    # TODO: SubX-
+    # TODO: XorCol
+    # TODO: transform to string
+    return 0
+
+  def __feistel_encrypt(self, round_time):
+    done = False
+    idx_left_block = BLOCK_SIZE
+    idx_right_block = 0
+    round_key = self.key
+    right_block = self.plain_text[idx_right_block:idx_right_block+BLOCK_SIZE]
+    left_block = self.plain_text[idx_left_block:idx_left_block+BLOCK_SIZE]
+
+    while not done:
+      round_idx = 0
+      while round_idx < round_time:
+        right_block_new = self.__xor(left_block, self.__round_function(right_block, round_key))
+        left_block_new = right_block
+        right_block = right_block_new
+        left_block = left_block_new
+        round_key = self.__generate_round_key(round_key)
+        round_idx += 1
+      # TODO: append to cipher text
+      # TODO: update block
+
   def encrypt(self):
     # get plain text
     if self.plain_text_src == 'file':
       self.plain_text = self.__load_plain_text()
+
+    # get feistel round time
+    round_time = 5 + (len(self.key) % 6)
     
     # convert plain text and key to hex
     self.plain_text = self.__to_hex(self.plain_text)
@@ -72,7 +114,9 @@ class Chill:
     # padding key
     self.__key_padding()
 
+    # feistel
+    self.__feistel_encrypt(round_time)
+
   def decrypt(self):
     pass
-
   
