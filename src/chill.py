@@ -1,7 +1,8 @@
 import numpy as np
 import random
 
-BLOCK_SIZE = 16 # bytes
+BLOCK_SIZE_IN_BYTE = 16 # bytes
+BLOCK_SIZE_IN_HEX = BLOCK_SIZE_IN_BYTE*2 # hex
 
 class Chill:
   def __init__(self, plain_text_src = 'text', plain_text = '', plain_text_path = '', key = 'key'):
@@ -19,7 +20,7 @@ class Chill:
     return '%08X' % int(result, 2)
 
   def __plain_padding(self):
-    plain_block_size = 2*2*BLOCK_SIZE
+    plain_block_size = 2*BLOCK_SIZE_IN_HEX
     if len(self.plain_text) % plain_block_size != 0:
       padd_length = (plain_block_size - (len(self.plain_text) % plain_block_size)) / 2
 
@@ -30,15 +31,15 @@ class Chill:
 
   def __key_padding(self):
     key_length = len(self.key)
-    if key_length == 2*BLOCK_SIZE:
+    if key_length == BLOCK_SIZE_IN_HEX:
       pass
-    elif key_length < 2*BLOCK_SIZE:
+    elif key_length < BLOCK_SIZE_IN_HEX:
       seed = 0
       for idx, k in enumerate(self.key):
         if (idx % 2 == 1):
           seed += ord(k)
       random.seed(seed)
-      while len(self.key) < 2*BLOCK_SIZE:
+      while len(self.key) < BLOCK_SIZE_IN_HEX:
         pos = random.randrange(0, key_length)
         self.key += self.key[pos]
     else:
@@ -47,7 +48,7 @@ class Chill:
         if (idx % 2 == 0):
           seed += ord(k)
       random.seed(seed)
-      while len(self.key) > 2*BLOCK_SIZE:
+      while len(self.key) > BLOCK_SIZE_IN_HEX:
         pos = random.randrange(0, key_length)
         self.key = self.key[:pos] + self.key[(pos+1):]
 
@@ -61,16 +62,85 @@ class Chill:
   def __xor(self, hex_string1, hex_string2):
     return format(int(hex(int(hex_string1, 16) ^ int(hex_string2, 16)), 0), 'X')
 
+  def __transform_to_matrix(self, data):
+    result = np.zeros((4, 4), 'U2')
+    result[0, 0] = data[0] + data[1]
+    result[0, 1] = data[4] + data[5]
+    result[0, 2] = data[6] + data[7]
+    result[0, 3] = data[18] + data[19]
+    result[1, 0] = data[2] + data[3]
+    result[1, 1] = data[8] + data[9]
+    result[1, 2] = data[16] + data[17]
+    result[1, 3] = data[20] + data[21]
+    result[2, 0] = data[10] + data[11]
+    result[2, 1] = data[14] + data[15]
+    result[2, 2] = data[22] + data[23]
+    result[2, 3] = data[28] + data[29]
+    result[3, 0] = data[12] + data[13]
+    result[3, 1] = data[24] + data[25]
+    result[3, 2] = data[26] + data[27]
+    result[3, 3] = data[30] + data[31]
+
+    return result
+
+  def __subX_plus(self, input):
+    # input is matrix
+    # return matrix
+    result = np.copy(input)
+    for idx_row, rows in enumerate(result):
+      for idx_col, cols in enumerate(rows):
+        int_result = ((int(result[idx_row][idx_col][0]+'0', 16) - 16) % 256) + ((int(result[idx_row][idx_col][1], 16) - 1) % 16)
+        result[idx_row][idx_col] = format(int(hex(int_result), 0), 'X')
+
+    return result
+
+  def __l_transposition(self, input):
+    # input is matrix
+    # return matrix
+    result = np.copy(input)
+    result[0, 0], result[3, 1] = result[3, 1], result[0, 0]
+    result[0, 1], result[3, 0] = result[3, 0], result[0, 1]
+    result[0, 2], result[3, 3] = result[3, 3], result[0, 2]
+    result[0, 3], result[3, 2] = result[3, 2], result[0, 3]
+    result[1, 0], result[2, 3] = result[2, 3], result[1, 0]
+    result[2, 0], result[1, 3] = result[1, 3], result[2, 0]
+    result[1, 1], result[2, 2] = result[2, 2], result[1, 1]
+
+    return result
+
+  def __shift_col(self, input):
+    # input is matrix
+    # return matrix
+    sum_col = [0, 0, 0, 0]
+    for idx_row, rows in enumerate(input):
+      for idx_col, cols in enumerate(rows):
+        sum_col[idx_col] += int(input[idx_row][idx_col], 16)
+    result_temp = np.copy(input.T)
+    # shift
+    result = []
+    for idx_row, rows in enumerate(result_temp):
+      if idx_row % 2 == 1:
+        result.append(np.roll(rows, sum_col[idx_row] % 4))
+      else:
+        result.append(np.roll(rows, (sum_col[idx_row] % 4) * -1))
+      print sum_col[idx_row] % 4
+    return np.asarray(result).T
+
   def __round_function(self, right_block, round_key):
-    # TODO: transform to matrix
-    # TODO: SubX+
-    # TODO: L Transposition
-    # TODO: ShiftCol
+    # right_block and round_key are matrix
+    # return matrix
+    result = np.copy(right_block)
+    result = self.__subX_plus(result)
+    result = self.__l_transposition(result)
+    result = self.__shift_col(result)
+    # TODO: XOR with key
     # TODO: transform to string
-    return []
+    return result
 
   def __generate_round_key(self, round_key):
-    # TODO: transform to matrix
+    # round_key is matrix
+    # return matrix
+
     # TODO: RotMod
     # TODO: SubX-
     # TODO: XorCol
@@ -79,21 +149,29 @@ class Chill:
 
   def __feistel_encrypt(self, round_time):
     done = False
-    idx_left_block = BLOCK_SIZE
+    idx_left_block = BLOCK_SIZE_IN_HEX
     idx_right_block = 0
     round_key = self.key
-    right_block = self.plain_text[idx_right_block:idx_right_block+BLOCK_SIZE]
-    left_block = self.plain_text[idx_left_block:idx_left_block+BLOCK_SIZE]
+    round_key_matrix = self.__transform_to_matrix(round_key)
+    right_block = self.plain_text[idx_right_block:idx_right_block+BLOCK_SIZE_IN_HEX]
+    right_block_matrix = self.__transform_to_matrix(right_block)
+    left_block = self.plain_text[idx_left_block:idx_left_block+BLOCK_SIZE_IN_HEX]
+    left_block_matrix = self.__transform_to_matrix(left_block)
 
-    while not done:
-      round_idx = 0
-      while round_idx < round_time:
-        right_block_new = self.__xor(left_block, self.__round_function(right_block, round_key))
-        left_block_new = right_block
-        right_block = right_block_new
-        left_block = left_block_new
-        round_key = self.__generate_round_key(round_key)
-        round_idx += 1
+    print right_block_matrix
+    print self.__shift_col(right_block_matrix)
+
+    # while not done:
+    #   round_idx = 0
+      # while round_idx < round_time:
+    #     right_block_new = self.__xor(left_block, self.__round_function(right_block, round_key))
+    #     left_block_new = right_block
+
+    #     right_block = right_block_new
+    #     left_block = left_block_new
+
+    #     round_key = self.__generate_round_key(round_key)
+    #     round_idx += 1
       # TODO: append to cipher text
       # TODO: update block
 
