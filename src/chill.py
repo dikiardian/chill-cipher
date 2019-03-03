@@ -62,6 +62,17 @@ class Chill:
   def __xor(self, hex_string1, hex_string2):
     return format(int(hex(int(hex_string1, 16) ^ int(hex_string2, 16)), 0), 'X')
 
+  def __xor_matrix(self, hex_matrix1, hex_matrix2):
+    # matrix size are equal, return matrix
+    result = []
+    for idx_row, rows in enumerate(hex_matrix1):
+      row_result = []
+      for idx_col, cols in enumerate(rows):
+        row_result.append(self.__xor(hex_matrix1[idx_row][idx_col], hex_matrix2[idx_row][idx_col]))
+      result.append(row_result)
+
+    return np.asarray(result)
+
   def __transform_to_matrix(self, data):
     result = np.zeros((4, 4), 'U2')
     result[0, 0] = data[0] + data[1]
@@ -123,18 +134,21 @@ class Chill:
         result.append(np.roll(rows, sum_col[idx_row] % 4))
       else:
         result.append(np.roll(rows, (sum_col[idx_row] % 4) * -1))
-      print sum_col[idx_row] % 4
     return np.asarray(result).T
 
   def __round_function(self, right_block, round_key):
     # right_block and round_key are matrix
     # return matrix
     result = np.copy(right_block)
+    # SubX+
     result = self.__subX_plus(result)
+    # L Transposition
     result = self.__l_transposition(result)
+    # ShiftCol
     result = self.__shift_col(result)
-    # TODO: XOR with key
-    # TODO: transform to string
+    # XOR with key
+    result = self.__xor_matrix(result, round_key)
+
     return result
 
   def __generate_round_key(self, round_key):
@@ -158,8 +172,10 @@ class Chill:
     left_block = self.plain_text[idx_left_block:idx_left_block+BLOCK_SIZE_IN_HEX]
     left_block_matrix = self.__transform_to_matrix(left_block)
 
+    ###### TEST #######
+    print left_block_matrix
     print right_block_matrix
-    print self.__shift_col(right_block_matrix)
+    print self.__xor_matrix(left_block_matrix, right_block_matrix)
 
     # while not done:
     #   round_idx = 0
