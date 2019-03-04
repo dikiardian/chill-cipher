@@ -26,16 +26,14 @@ class Chill:
     self.cipher_text_path = cipher_text_path
     # get cipher text from file
     try:
-      if self.cipher_text_path != '':
-        self.cipher_text = self.__load_text('cipher')
+      if self.cipher_text_path != '': self.cipher_text = self.__load_text('cipher')
     except:
       pass
 
   def __to_hex(self, content):
     # convert content (string) to hex
     result = ''
-    for c in content:
-      result += format(ord(c), '08b')
+    for c in content: result += format(ord(c), '08b')
     return '%08X' % int(result, 2)
 
   def __from_hex(self, content):
@@ -52,8 +50,7 @@ class Chill:
     if len(self.plain_text) % plain_block_size != 0:
       padd_length = (plain_block_size - (len(self.plain_text) % plain_block_size)) / 2
       padd_char = '%02X' % padd_length
-      for i in range(0, padd_length):
-        self.plain_text += padd_char
+      for i in range(0, padd_length): self.plain_text += padd_char
 
   def __plain_unpadding(self):
     # remove pladding from plain text if exist
@@ -66,8 +63,7 @@ class Chill:
       if padding[i]+padding[i+1] != last_byte:
         is_padding = False
         break
-    if is_padding:
-      self.plain_text = self.plain_text[:-1 * idx_padding]
+    if is_padding: self.plain_text = self.plain_text[:-1 * idx_padding]
 
   def __key_padding(self):
     # padding the key
@@ -77,8 +73,7 @@ class Chill:
     elif key_length < BLOCK_SIZE_IN_HEX:
       seed = 0
       for idx, k in enumerate(self.key):
-        if (idx % 2 == 1):
-          seed += ord(k)
+        if (idx % 2 == 1): seed += ord(k)
       random.seed(seed)
       while len(self.key) < BLOCK_SIZE_IN_HEX:
         pos = random.randrange(0, key_length)
@@ -86,8 +81,7 @@ class Chill:
     else:
       seed = 0
       for idx, k in enumerate(self.key):
-        if (idx % 2 == 0):
-          seed += ord(k)
+        if (idx % 2 == 0): seed += ord(k)
       random.seed(seed)
       while len(self.key) > BLOCK_SIZE_IN_HEX:
         pos = random.randrange(0, key_length)
@@ -96,10 +90,8 @@ class Chill:
   def __load_text(self, mode):
     # load file content
     # open file
-    if mode == 'plain':
-      path = self.plain_text_path
-    else:
-      path = self.cipher_text_path
+    if mode == 'plain': path = self.plain_text_path
+    else: path = self.cipher_text_path
     with open(path, mode='rb') as file:
       file_content = file.read()
     return file_content
@@ -151,10 +143,7 @@ class Chill:
     result = np.copy(input)
     for idx_row, rows in enumerate(result):
       for idx_col, cols in enumerate(rows):
-        if mode == 'plus':
-          int_result = abs(((int(result[idx_row][idx_col][0]+'0', 16) - 16) % 256) + ((int(result[idx_row][idx_col][1], 16) - 1) % 16))
-        else: # mode == 'minus'
-          int_result = abs(((int(result[idx_row][idx_col][0]+'0', 16) - 16) % 256) - ((int(result[idx_row][idx_col][1], 16) - 1) % 16))
+        int_result = abs(((int(result[idx_row][idx_col][0]+'0', 16) - 16) % 256) + (1 if mode == 'plus' else -1) * ((int(result[idx_row][idx_col][1], 16) - 1) % 16))
         result[idx_row][idx_col] = format(int(hex(int_result), 0), '02X')
     return result
 
@@ -182,10 +171,7 @@ class Chill:
     # shift
     result = []
     for idx_row, rows in enumerate(result_temp):
-      if idx_row % 2 == 1:
-        result.append(np.roll(rows, sum_col[idx_row] % 4))
-      else:
-        result.append(np.roll(rows, (sum_col[idx_row] % 4) * -1))
+      result.append(np.roll(rows, (sum_col[idx_row] % 4) * (-1 if idx_row % 2 == 1 else 1)))
     return np.asarray(result).T
 
   def __rot_mod(self, key):
@@ -201,10 +187,8 @@ class Chill:
       idx_col2 = 1
       for idx_col1, cols in enumerate(rows):
         result[idx_row][idx_col1] = self.__xor(input[idx_row][idx_col1], input[idx_row][idx_col2])
-        if idx_col2 == len(rows)-1:
-          idx_col2 = 0
-        else:
-          idx_col2 += 1
+        if idx_col2 == len(rows)-1: idx_col2 = 0
+        else: idx_col2 += 1
     return result
 
   def __round_function(self, right_block, round_key):
@@ -258,10 +242,8 @@ class Chill:
       right_block_matrix = self.__transform_to_matrix(right_block)
       left_block_matrix = self.__transform_to_matrix(left_block)
       while round_idx < self.round_time:
-        if mode == 'encrypt':
-          round_key_matrix = self.arr_round_key[round_idx]
-        else: # mode == 'decrypt'
-          round_key_matrix = self.arr_round_key[self.round_time - 1 - round_idx]
+        if mode == 'encrypt': round_key_matrix = self.arr_round_key[round_idx]
+        else: round_key_matrix = self.arr_round_key[self.round_time - 1 - round_idx] # mode == 'decrypt'
         right_block_matrix_new = self.__xor_matrix(left_block_matrix, self.__round_function(right_block_matrix, round_key_matrix))
         left_block_matrix_new = np.copy(right_block_matrix)
         right_block_matrix = np.copy(right_block_matrix_new)
@@ -269,12 +251,10 @@ class Chill:
         round_idx += 1
       if mode == 'encrypt':
         self.cipher_text += self.__transform_to_string(right_block_matrix) + self.__transform_to_string(left_block_matrix)
-        if processed_block == (len(self.plain_text) / BLOCK_SIZE_IN_HEX):
-          done = True
+        if processed_block == (len(self.plain_text) / BLOCK_SIZE_IN_HEX): done = True
       else: # mode == 'decrypt'
         self.plain_text = self.__transform_to_string(left_block_matrix) + self.__transform_to_string(right_block_matrix) + self.plain_text
-        if processed_block == (len(self.cipher_text) / BLOCK_SIZE_IN_HEX):
-          done = True
+        if processed_block == (len(self.cipher_text) / BLOCK_SIZE_IN_HEX): done = True
       if not done:
         idx_left_block += 2*BLOCK_SIZE_IN_HEX
         idx_right_block += 2*BLOCK_SIZE_IN_HEX
