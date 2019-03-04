@@ -295,4 +295,5 @@ class Chill:
     self.__plain_unpadding()
     # convert plain text from hex to string
     self.plain_text = self.__from_hex(self.plain_text)
+    self.plain_text = self.plain_text.strip('\00')
     # result stored in self.plain_text
