@@ -21,12 +21,20 @@ class Chill:
     if self.plain_text_src == 'file':
       self.plain_text = self.__load_text('plain')
 
+    if self.plain_text == '':
+      print 'Error: 0 bytes plain text'
+      exit(0)
+
     # cipher text related
     self.cipher_text = ''
     self.cipher_text_path = cipher_text_path
     # get cipher text from file
     try:
-      if self.cipher_text_path != '': self.cipher_text = self.__load_text('cipher')
+      if self.cipher_text_path != '':
+        self.cipher_text = self.__load_text('cipher')
+        if self.plain_text == '':
+          print 'Error: 0 bytes plain text'
+          exit(0)
     except:
       pass
 
