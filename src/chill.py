@@ -3,19 +3,27 @@ import random
 
 BLOCK_SIZE_IN_BYTE = 16 # bytes
 BLOCK_SIZE_IN_HEX = BLOCK_SIZE_IN_BYTE*2 # hex
-
 class Chill:
-  def __init__(self, plain_text_src = 'text', plain_text = '', plain_text_path = '', key = 'key'):
+  def __init__(self, plain_text_src = 'text', plain_text = '', plain_text_path = '', key = 'key', cipher_text_path = ''):
     # constructor
-    self.key = key
+    self.original_key_length = len(key) # original key length
+    self.key = self.__to_hex(key)
+    self.__key_padding()
+    self.round_time = 5 + (self.original_key_length % 6)
+    self.arr_round_key = self.__generate_round_key()
+
     self.plain_text = plain_text
     self.plain_text_path = plain_text_path
     self.plain_text_src = plain_text_src # ['text', 'file']
     self.cipher_text = ''
+    self.cipher_text_path = cipher_text_path
 
     # get plain text from file
     if self.plain_text_src == 'file':
-      self.plain_text = self.__load_plain_text()
+      self.plain_text = self.__load_text('plain')
+
+    if self.cipher_text_path != '':
+      self.cipher_text = self.__load_text('cipher')
 
   def __to_hex(self, content):
     result = ''
@@ -35,11 +43,22 @@ class Chill:
     plain_block_size = 2*BLOCK_SIZE_IN_HEX
     if len(self.plain_text) % plain_block_size != 0:
       padd_length = (plain_block_size - (len(self.plain_text) % plain_block_size)) / 2
+      padd_char = '%02X' % padd_length
+      for i in range(0, padd_length):
+        self.plain_text += padd_char
 
-    padd_char = '%02X' % padd_length
-
-    for i in range(0, padd_length):
-      self.plain_text += padd_char
+  def __plain_unpadding(self):
+    last_byte = self.plain_text[-2:]
+    idx_padding = 2*(int(last_byte, 16))
+    padding = self.plain_text[-1 * idx_padding:]
+    # check padding or not
+    is_padding = True
+    for i in range(0, len(padding), 2):
+      if padding[i]+padding[i+1] != last_byte:
+        is_padding = False
+        break
+    if is_padding:
+      self.plain_text = self.plain_text[:-1 * idx_padding]
 
   def __key_padding(self):
     key_length = len(self.key)
@@ -64,9 +83,14 @@ class Chill:
         pos = random.randrange(0, key_length)
         self.key = self.key[:pos] + self.key[(pos+1):]
 
-  def __load_plain_text(self):
+  def __load_text(self, mode):
     # open file
-    with open(self.plain_text_path, mode='rb') as file:
+    if mode == 'plain':
+      path = self.plain_text_path
+    else:
+      path = self.cipher_text_path
+
+    with open(path, mode='rb') as file:
       file_content = file.read()
 
     return file_content
@@ -120,9 +144,9 @@ class Chill:
     for idx_row, rows in enumerate(result):
       for idx_col, cols in enumerate(rows):
         if mode == 'plus':
-          int_result = ((int(result[idx_row][idx_col][0]+'0', 16) - 16) % 256) + ((int(result[idx_row][idx_col][1], 16) - 1) % 16)
+          int_result = abs(((int(result[idx_row][idx_col][0]+'0', 16) - 16) % 256) + ((int(result[idx_row][idx_col][1], 16) - 1) % 16))
         else: # mode == 'minus'
-          int_result = ((int(result[idx_row][idx_col][0]+'0', 16) - 16) % 256) - ((int(result[idx_row][idx_col][1], 16) - 1) % 16)
+          int_result = abs(((int(result[idx_row][idx_col][0]+'0', 16) - 16) % 256) - ((int(result[idx_row][idx_col][1], 16) - 1) % 16))
         result[idx_row][idx_col] = format(int(hex(int_result), 0), '02X')
 
     return result
@@ -158,9 +182,9 @@ class Chill:
         result.append(np.roll(rows, (sum_col[idx_row] % 4) * -1))
     return np.asarray(result).T
 
-  def __rot_mod(self, key, key_length):
+  def __rot_mod(self, key):
     # key is matrix, return matrix
-    return np.rot90(key, -1 * (key_length % 4))
+    return np.rot90(key, -1 * (self.original_key_length % 4))
 
   def __xor_col(self, input):
     # input is matrix, return matrix
@@ -191,26 +215,23 @@ class Chill:
 
     return result
 
-  def __generate_round_key(self, round_key, key_length):
-    # round_key is matrix, return matrix
-
-    # RotMod
-    result = self.__rot_mod(round_key, key_length)
-    # SubX-
-    result = self.__subX('minus', result)
-    # XorCol
-    result = self.__xor_col(result)
+  def __generate_round_key(self):
+    # round_key is matrix, return array of matrix
+    round_key = self.__transform_to_matrix(self.key)
+    result = []
+    result.append(round_key)
+    for i in range(1, self.round_time):
+      # RotMod
+      round_key_temp = self.__rot_mod(result[i-1])
+      # SubX-
+      round_key_temp = self.__subX('minus', round_key_temp)
+      # XorCol
+      round_key_temp = self.__xor_col(round_key_temp)
+      result.append(round_key_temp)
     
-    return result
+    return np.asarray(result)
 
-  def __feistel_encrypt(self, original_key_length):
-    # init key
-    round_key = self.key
-    round_key_matrix = self.__transform_to_matrix(round_key)
-
-    # get feistel round time
-    round_time = 5 + (original_key_length % 6)
-
+  def __feistel(self, mode):
     # init feistel loop
     done = False
     idx_left_block = BLOCK_SIZE_IN_HEX
@@ -220,51 +241,78 @@ class Chill:
     while not done:
       # init round
       round_idx = 0
-      right_block = self.plain_text[idx_right_block:idx_right_block+BLOCK_SIZE_IN_HEX]
+      if mode == 'encrypt':
+        right_block = self.plain_text[idx_right_block:idx_right_block+BLOCK_SIZE_IN_HEX]
+        left_block = self.plain_text[idx_left_block:idx_left_block+BLOCK_SIZE_IN_HEX]
+      else: # mode == 'decrypt'
+        if idx_right_block == 0:
+          right_block = self.cipher_text[-1*(idx_right_block+BLOCK_SIZE_IN_HEX):]
+        else:
+          right_block = self.cipher_text[-1*(idx_right_block+BLOCK_SIZE_IN_HEX) : -1*idx_right_block]
+        left_block = self.cipher_text[-1*(idx_left_block+BLOCK_SIZE_IN_HEX) : -1*(idx_left_block)]
+      
       right_block_matrix = self.__transform_to_matrix(right_block)
-      left_block = self.plain_text[idx_left_block:idx_left_block+BLOCK_SIZE_IN_HEX]
       left_block_matrix = self.__transform_to_matrix(left_block)
 
-      while round_idx < round_time:        
+      while round_idx < self.round_time:
+        if mode == 'encrypt':
+          round_key_matrix = self.arr_round_key[round_idx]
+        else: # mode == 'decrypt'
+          round_key_matrix = self.arr_round_key[self.round_time - 1 - round_idx]
         right_block_matrix_new = self.__xor_matrix(left_block_matrix, self.__round_function(right_block_matrix, round_key_matrix))
         left_block_matrix_new = np.copy(right_block_matrix)
         right_block_matrix = np.copy(right_block_matrix_new)
         left_block_matrix = np.copy(left_block_matrix_new)
-
-        round_key_matrix = self.__generate_round_key(round_key_matrix, original_key_length)
         round_idx += 1
 
-      self.cipher_text += self.__transform_to_string(right_block_matrix) + self.__transform_to_string(left_block_matrix)
+      if mode == 'encrypt':
+        self.cipher_text += self.__transform_to_string(right_block_matrix) + self.__transform_to_string(left_block_matrix)
+        if processed_block == (len(self.plain_text) / BLOCK_SIZE_IN_HEX):
+          done = True
+      else: # mode == 'decrypt'
+        self.plain_text = self.__transform_to_string(left_block_matrix) + self.__transform_to_string(right_block_matrix) + self.plain_text
+        if processed_block == (len(self.cipher_text) / BLOCK_SIZE_IN_HEX):
+          done = True
 
-      if processed_block == (len(self.plain_text) / BLOCK_SIZE_IN_HEX):
-        done = True
-      else:
+      if not done:
         idx_left_block += 2*BLOCK_SIZE_IN_HEX
         idx_right_block += 2*BLOCK_SIZE_IN_HEX
-        processed_block += 1
-
-    # remove '-' char if exist
-    self.cipher_text = self.cipher_text.replace('-', '')
+        processed_block += 2
 
   def encrypt(self):
-    # get original key length before padding
-    original_key_length = len(self.key)
-
-    # convert plain text and key to hex
+    # preprocess plain text
     self.plain_text = self.__to_hex(self.plain_text)
-    self.key = self.__to_hex(self.key)
-
-    # padding plain text
     self.__plain_padding()
-    # padding key
-    self.__key_padding()
+
+    self.cipher_text = ''
 
     # feistel
-    self.__feistel_encrypt(original_key_length)
+    self.__feistel('encrypt')
 
     # convert cipher text from hex to string
     self.cipher_text = self.__from_hex(self.cipher_text)
 
+    # result stored in self.cipher_text
+    # dump cipher to file txt
+    f = open(self.cipher_text_path, 'wb')
+    f.write(self.cipher_text)
+    f.close()
+
   def decrypt(self):
-    pass
+    # preprocess cipher text
+    self.cipher_text = self.__to_hex(self.cipher_text)
+
+    self.plain_text = ''
+
+    # feistel
+    self.__feistel('decrypt')
+
+    # remove padding from plain text
+    self.__plain_unpadding()
+
+    # convert plain text from hex to string
+    self.plain_text = self.__from_hex(self.plain_text)
+
+    # result stored in self.plain_text
+
   
