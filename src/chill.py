@@ -60,7 +60,7 @@ class Chill:
     return file_content
 
   def __xor(self, hex_string1, hex_string2):
-    return format(int(hex(int(hex_string1, 16) ^ int(hex_string2, 16)), 0), 'X')
+    return format(int(hex(int(hex_string1, 16) ^ int(hex_string2, 16)), 0), '02X')
 
   def __xor_matrix(self, hex_matrix1, hex_matrix2):
     # matrix size are equal, return matrix
@@ -94,14 +94,17 @@ class Chill:
 
     return result
 
-  def __subX_plus(self, input):
+  def __subX(self, mode, input):
     # input is matrix
     # return matrix
     result = np.copy(input)
     for idx_row, rows in enumerate(result):
       for idx_col, cols in enumerate(rows):
-        int_result = ((int(result[idx_row][idx_col][0]+'0', 16) - 16) % 256) + ((int(result[idx_row][idx_col][1], 16) - 1) % 16)
-        result[idx_row][idx_col] = format(int(hex(int_result), 0), 'X')
+        if mode == 'plus':
+          int_result = ((int(result[idx_row][idx_col][0]+'0', 16) - 16) % 256) + ((int(result[idx_row][idx_col][1], 16) - 1) % 16)
+        else: # mode == 'minus'
+          int_result = ((int(result[idx_row][idx_col][0]+'0', 16) - 16) % 256) - ((int(result[idx_row][idx_col][1], 16) - 1) % 16)
+        result[idx_row][idx_col] = format(int(hex(int_result), 0), '02X')
 
     return result
 
@@ -136,12 +139,30 @@ class Chill:
         result.append(np.roll(rows, (sum_col[idx_row] % 4) * -1))
     return np.asarray(result).T
 
+  def __rot_mod(self, key, key_length):
+    # key is matrix, return matrix
+    return np.rot90(key, -1 * (key_length % 4))
+
+  def __xor_col(self, input):
+    # input is matrix, return matrix
+    result = np.copy(input)
+    for idx_row, rows in enumerate(input):
+      idx_col2 = 1
+      for idx_col1, cols in enumerate(rows):
+        result[idx_row][idx_col1] = self.__xor(input[idx_row][idx_col1], input[idx_row][idx_col2])
+        if idx_col2 == len(rows)-1:
+          idx_col2 = 0
+        else:
+          idx_col2 += 1
+
+    return result
+
   def __round_function(self, right_block, round_key):
     # right_block and round_key are matrix
     # return matrix
-    result = np.copy(right_block)
+
     # SubX+
-    result = self.__subX_plus(result)
+    result = self.__subX('plus', right_block)
     # L Transposition
     result = self.__l_transposition(result)
     # ShiftCol
@@ -151,17 +172,19 @@ class Chill:
 
     return result
 
-  def __generate_round_key(self, round_key):
-    # round_key is matrix
-    # return matrix
+  def __generate_round_key(self, round_key, key_length):
+    # round_key is matrix, return matrix
 
-    # TODO: RotMod
-    # TODO: SubX-
-    # TODO: XorCol
-    # TODO: transform to string
-    return 0
+    # RotMod
+    result = self.__rot_mod(round_key, key_length)
+    # SubX-
+    result = self.__subX('minus', result)
+    # XorCol
+    result = self.__xor_col(result)
+    
+    return result
 
-  def __feistel_encrypt(self, round_time):
+  def __feistel_encrypt(self, original_key_length):
     done = False
     idx_left_block = BLOCK_SIZE_IN_HEX
     idx_right_block = 0
@@ -172,33 +195,36 @@ class Chill:
     left_block = self.plain_text[idx_left_block:idx_left_block+BLOCK_SIZE_IN_HEX]
     left_block_matrix = self.__transform_to_matrix(left_block)
 
+    # get feistel round time
+    round_time = 5 + (original_key_length % 6)
+
     ###### TEST #######
-    print left_block_matrix
-    print right_block_matrix
-    print self.__xor_matrix(left_block_matrix, right_block_matrix)
+    print round_key_matrix
+    print self.__xor_col(round_key_matrix)
+    #############
 
     # while not done:
     #   round_idx = 0
-      # while round_idx < round_time:
-    #     right_block_new = self.__xor(left_block, self.__round_function(right_block, round_key))
-    #     left_block_new = right_block
+    #   while round_idx < round_time:
+    #     right_block_matrix_new = self.__xor_matrix(left_block_matrix, self.__round_function(right_block_matrix, round_key_matrix))
+    #     left_block_matrix_new = np.copy(right_block_matrix)
+    #     right_block_matrix = np.copy(right_block_matrix_new)
+    #     left_block_matrix = np.copy(left_block_matrix_new)
 
-    #     right_block = right_block_new
-    #     left_block = left_block_new
-
-    #     round_key = self.__generate_round_key(round_key)
+    #     round_key_matrix = self.__generate_round_key(round_key_matrix, original_key_length)
     #     round_idx += 1
-      # TODO: append to cipher text
-      # TODO: update block
+    #   # TODO: convert matrix to string
+    #   # TODO: append to cipher text
+    #   # TODO: check if done and update block
 
   def encrypt(self):
     # get plain text
     if self.plain_text_src == 'file':
       self.plain_text = self.__load_plain_text()
-
-    # get feistel round time
-    round_time = 5 + (len(self.key) % 6)
     
+    # get original key length before padding
+    original_key_length = len(self.key)
+
     # convert plain text and key to hex
     self.plain_text = self.__to_hex(self.plain_text)
     self.key = self.__to_hex(self.key)
@@ -209,7 +235,7 @@ class Chill:
     self.__key_padding()
 
     # feistel
-    self.__feistel_encrypt(round_time)
+    self.__feistel_encrypt(original_key_length)
 
   def decrypt(self):
     pass
