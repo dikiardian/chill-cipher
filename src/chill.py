@@ -6,7 +6,7 @@ BLOCK_SIZE_IN_HEX = BLOCK_SIZE_IN_BYTE*2 # hex
 class Chill:
   def __init__(self, plain_text_src = 'text', plain_text = '', plain_text_path = '', key = 'key', mode = 'ECB', cipher_text_path = ''):
     # constructor
-    if mode.upper() in ['ECB', 'CBC', 'CFB', 'OFB', 'CTR']: self.mode = mode
+    if mode.upper() in ['ECB', 'CBC', 'CFB', 'OFB', 'CTR']: self.mode = mode.upper()
     else:
       print 'Error: incorrect mode of operation'
       exit(0)
@@ -17,6 +17,7 @@ class Chill:
     self.__key_padding()
     self.round_time = 5 + (self.original_key_length % 6)
     self.arr_round_key = self.__generate_round_key()
+    self.IV = self.__to_hex(open("/dev/urandom","rb").read(BLOCK_SIZE_IN_HEX))
 
     # plain text related
     self.plain_text = plain_text
@@ -47,7 +48,9 @@ class Chill:
     # convert content (string) to hex
     result = ''
     for c in content: result += format(ord(c), '08b')
-    return '%08X' % int(result, 2)
+    t = '%08X' % int(result, 2)
+    if len(t) % 2 == 1: t = '0' + t
+    return t
 
   def __from_hex(self, content):
     # convert content (hex) to string
@@ -90,7 +93,9 @@ class Chill:
 
   def __xor(self, hex_string1, hex_string2):
     # return xor from two strings
-    return format(int(hex(int(hex_string1, 16) ^ int(hex_string2, 16)), 0), '02X')
+    t = format(int(hex(int(hex_string1, 16) ^ int(hex_string2, 16)), 0), '02X')
+    if len(t) % 2 == 1: t = '0' + t
+    return t
 
   def __xor_matrix(self, hex_matrix1, hex_matrix2):
     # return xor from two matrix
@@ -245,14 +250,36 @@ class Chill:
     idx_left_block = BLOCK_SIZE_IN_HEX
     idx_right_block = 0
     processed_block = 2
+
+    if self.mode == 'CBC':
+      self.cipher_text += self.IV
+
     while not done:
       # init round
       right_block = self.plain_text[idx_right_block:idx_right_block+BLOCK_SIZE_IN_HEX]
       left_block = self.plain_text[idx_left_block:idx_left_block+BLOCK_SIZE_IN_HEX]
+
+      if self.mode == 'CBC':
+        right_block_IV = self.IV[:BLOCK_SIZE_IN_HEX]
+        left_block_IV = self.IV[BLOCK_SIZE_IN_HEX:]
+
+        right_block = self.__xor(right_block, right_block_IV)
+        left_block = self.__xor(left_block, left_block_IV)
+
       right_block_matrix = self.__transform_to_matrix(right_block)
       left_block_matrix = self.__transform_to_matrix(left_block)
       left_block_matrix, right_block_matrix = self.__feistel('encrypt', left_block_matrix, right_block_matrix)
-      self.cipher_text += self.__transform_to_string(right_block_matrix) + self.__transform_to_string(left_block_matrix)
+
+      right_block = self.__transform_to_string(right_block_matrix)
+      left_block = self.__transform_to_string(left_block_matrix)
+
+      result = right_block + left_block
+
+      if self.mode == 'CBC':
+        self.IV = result
+
+      self.cipher_text += result
+
       if processed_block == (len(self.plain_text) / BLOCK_SIZE_IN_HEX): done = True
       if not done:
         idx_left_block += 2*BLOCK_SIZE_IN_HEX
@@ -271,7 +298,6 @@ class Chill:
     # DECRYPTION
     # preprocess
     self.cipher_text = self.__to_hex(self.cipher_text)
-    if len(self.cipher_text) % 64 == 63: self.cipher_text = '0' + self.cipher_text
     self.plain_text = ''
     # feistel
     # init feistel loop
@@ -279,20 +305,36 @@ class Chill:
     idx_left_block = BLOCK_SIZE_IN_HEX
     idx_right_block = 0
     processed_block = 2
+
     while not done:
+      if self.mode == 'CBC':
+        self.IV = self.cipher_text[-1*(idx_left_block*2+BLOCK_SIZE_IN_HEX*2)+idx_right_block : -1*(idx_left_block*2)+idx_right_block]
+        if self.IV == '': break
+
       # init round
       if idx_right_block == 0:
         right_block = self.cipher_text[-1*(idx_right_block+BLOCK_SIZE_IN_HEX):]
       else:
         right_block = self.cipher_text[-1*(idx_right_block+BLOCK_SIZE_IN_HEX) : -1*idx_right_block]
       left_block = self.cipher_text[-1*(idx_left_block+BLOCK_SIZE_IN_HEX) : -1*(idx_left_block)]
+
       right_block_matrix = self.__transform_to_matrix(right_block)
       left_block_matrix = self.__transform_to_matrix(left_block)
 
       # feistel per 2 blocks
       left_block_matrix, right_block_matrix = self.__feistel('decrypt', left_block_matrix, right_block_matrix)
       
-      self.plain_text = self.__transform_to_string(left_block_matrix) + self.__transform_to_string(right_block_matrix) + self.plain_text
+      left_block = self.__transform_to_string(left_block_matrix)
+      right_block = self.__transform_to_string(right_block_matrix)
+
+      if self.mode == 'CBC':
+        right_block_IV = self.IV[BLOCK_SIZE_IN_HEX:]
+        left_block_IV = self.IV[:BLOCK_SIZE_IN_HEX]
+
+        right_block = self.__xor(right_block, right_block_IV)
+        left_block = self.__xor(left_block, left_block_IV)
+
+      self.plain_text = left_block + right_block + self.plain_text
       if processed_block == (len(self.cipher_text) / BLOCK_SIZE_IN_HEX): done = True
       if not done:
         idx_left_block += 2*BLOCK_SIZE_IN_HEX
