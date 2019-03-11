@@ -271,7 +271,7 @@ class Chill:
     # DECRYPTION
     # preprocess
     self.cipher_text = self.__to_hex(self.cipher_text)
-    if len(self.cipher_text) == 63: self.cipher_text = '0' + self.cipher_text
+    if len(self.cipher_text) % 64 == 63: self.cipher_text = '0' + self.cipher_text
     self.plain_text = ''
     # feistel
     # init feistel loop
