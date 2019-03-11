@@ -94,7 +94,7 @@ class Chill:
   def __xor(self, hex_string1, hex_string2):
     # return xor from two strings
     t = format(int(hex(int(hex_string1, 16) ^ int(hex_string2, 16)), 0), '02X')
-    if len(t) % 2 == 1: t = '0' + t
+    while len(t) % 2 == 1 or len(t) == 30: t = '0' + t
     return t
 
   def __xor_matrix(self, hex_matrix1, hex_matrix2):
