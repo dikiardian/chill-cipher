@@ -253,10 +253,11 @@ class Chill:
         processed_block += 2
 
   def __plain_pad(self, s):
-      return s + (32 - len(s) % 32) * chr(32 - len(s) % 32)
+    _len = BLOCK_SIZE_IN_HEX
+    return s + (_len - len(s) % _len) * chr(_len - len(s) % _len)
 
   def __plain_unpad(self, s):
-      return s[:-ord(s[len(s)-1:])]
+    return s[:-ord(s[len(s)-1:])]
 
   def encrypt(self):
     # ENCRYPTION
