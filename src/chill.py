@@ -212,45 +212,19 @@ class Chill:
       result.append(round_key_temp)
     return np.asarray(result)
 
-  def __feistel(self, mode):
+  def __feistel(self, mode, left_block_matrix, right_block_matrix):
     # Feistel Structure implementation
-    # init feistel loop
-    done = False
-    idx_left_block = BLOCK_SIZE_IN_HEX
-    idx_right_block = 0
-    processed_block = 2
-    while not done:
-      # init round
-      round_idx = 0
-      if mode == 'encrypt':
-        right_block = self.plain_text[idx_right_block:idx_right_block+BLOCK_SIZE_IN_HEX]
-        left_block = self.plain_text[idx_left_block:idx_left_block+BLOCK_SIZE_IN_HEX]
-      else: # mode == 'decrypt'
-        if idx_right_block == 0:
-          right_block = self.cipher_text[-1*(idx_right_block+BLOCK_SIZE_IN_HEX):]
-        else:
-          right_block = self.cipher_text[-1*(idx_right_block+BLOCK_SIZE_IN_HEX) : -1*idx_right_block]
-        left_block = self.cipher_text[-1*(idx_left_block+BLOCK_SIZE_IN_HEX) : -1*(idx_left_block)]
-      right_block_matrix = self.__transform_to_matrix(right_block)
-      left_block_matrix = self.__transform_to_matrix(left_block)
-      while round_idx < self.round_time:
-        if mode == 'encrypt': round_key_matrix = self.arr_round_key[round_idx]
-        else: round_key_matrix = self.arr_round_key[self.round_time - 1 - round_idx] # mode == 'decrypt'
-        right_block_matrix_new = self.__xor_matrix(left_block_matrix, self.__round_function(right_block_matrix, round_key_matrix))
-        left_block_matrix_new = np.copy(right_block_matrix)
-        right_block_matrix = np.copy(right_block_matrix_new)
-        left_block_matrix = np.copy(left_block_matrix_new)
-        round_idx += 1
-      if mode == 'encrypt':
-        self.cipher_text += self.__transform_to_string(right_block_matrix) + self.__transform_to_string(left_block_matrix)
-        if processed_block == (len(self.plain_text) / BLOCK_SIZE_IN_HEX): done = True
-      else: # mode == 'decrypt'
-        self.plain_text = self.__transform_to_string(left_block_matrix) + self.__transform_to_string(right_block_matrix) + self.plain_text
-        if processed_block == (len(self.cipher_text) / BLOCK_SIZE_IN_HEX): done = True
-      if not done:
-        idx_left_block += 2*BLOCK_SIZE_IN_HEX
-        idx_right_block += 2*BLOCK_SIZE_IN_HEX
-        processed_block += 2
+    round_idx = 0
+    while round_idx < self.round_time:
+      if mode == 'encrypt': round_key_matrix = self.arr_round_key[round_idx]
+      else: round_key_matrix = self.arr_round_key[self.round_time - 1 - round_idx] # mode == 'decrypt'
+      right_block_matrix_new = self.__xor_matrix(left_block_matrix, self.__round_function(right_block_matrix, round_key_matrix))
+      left_block_matrix_new = np.copy(right_block_matrix)
+      right_block_matrix = np.copy(right_block_matrix_new)
+      left_block_matrix = np.copy(left_block_matrix_new)
+      round_idx += 1
+    
+    return left_block_matrix, right_block_matrix
 
   def __plain_pad(self, s):
       return s + (32 - len(s) % 32) * chr(32 - len(s) % 32)
@@ -265,7 +239,25 @@ class Chill:
     self.plain_text = self.__to_hex(self.plain_text)
     self.cipher_text = ''
     # feistel
-    self.__feistel('encrypt')
+    # init feistel loop
+    done = False
+    idx_left_block = BLOCK_SIZE_IN_HEX
+    idx_right_block = 0
+    processed_block = 2
+    while not done:
+      # init round
+      right_block = self.plain_text[idx_right_block:idx_right_block+BLOCK_SIZE_IN_HEX]
+      left_block = self.plain_text[idx_left_block:idx_left_block+BLOCK_SIZE_IN_HEX]
+      right_block_matrix = self.__transform_to_matrix(right_block)
+      left_block_matrix = self.__transform_to_matrix(left_block)
+      left_block_matrix, right_block_matrix = self.__feistel('encrypt', left_block_matrix, right_block_matrix)
+      self.cipher_text += self.__transform_to_string(right_block_matrix) + self.__transform_to_string(left_block_matrix)
+      if processed_block == (len(self.plain_text) / BLOCK_SIZE_IN_HEX): done = True
+      if not done:
+        idx_left_block += 2*BLOCK_SIZE_IN_HEX
+        idx_right_block += 2*BLOCK_SIZE_IN_HEX
+        processed_block += 2
+
     # convert cipher text from hex to string
     self.cipher_text = self.__from_hex(self.cipher_text)
     # result stored in self.cipher_text
@@ -281,7 +273,31 @@ class Chill:
     if len(self.cipher_text) == 63: self.cipher_text = '0' + self.cipher_text
     self.plain_text = ''
     # feistel
-    self.__feistel('decrypt')
+    # init feistel loop
+    done = False
+    idx_left_block = BLOCK_SIZE_IN_HEX
+    idx_right_block = 0
+    processed_block = 2
+    while not done:
+      # init round
+      if idx_right_block == 0:
+        right_block = self.cipher_text[-1*(idx_right_block+BLOCK_SIZE_IN_HEX):]
+      else:
+        right_block = self.cipher_text[-1*(idx_right_block+BLOCK_SIZE_IN_HEX) : -1*idx_right_block]
+      left_block = self.cipher_text[-1*(idx_left_block+BLOCK_SIZE_IN_HEX) : -1*(idx_left_block)]
+      right_block_matrix = self.__transform_to_matrix(right_block)
+      left_block_matrix = self.__transform_to_matrix(left_block)
+
+      # feistel per 2 blocks
+      left_block_matrix, right_block_matrix = self.__feistel('decrypt', left_block_matrix, right_block_matrix)
+      
+      self.plain_text = self.__transform_to_string(left_block_matrix) + self.__transform_to_string(right_block_matrix) + self.plain_text
+      if processed_block == (len(self.cipher_text) / BLOCK_SIZE_IN_HEX): done = True
+      if not done:
+        idx_left_block += 2*BLOCK_SIZE_IN_HEX
+        idx_right_block += 2*BLOCK_SIZE_IN_HEX
+        processed_block += 2
+
     # convert plain text from hex to string
     self.plain_text = self.__from_hex(self.plain_text)
     # remove padding from plain text
