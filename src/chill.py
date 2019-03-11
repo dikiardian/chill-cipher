@@ -52,27 +52,6 @@ class Chill:
       result += chr(int(c, 16))
     return result
 
-  def __plain_padding(self):
-    # padding the plain text
-    plain_block_size = 2*BLOCK_SIZE_IN_HEX
-    if len(self.plain_text) % plain_block_size != 0:
-      padd_length = (plain_block_size - (len(self.plain_text) % plain_block_size)) / 2
-      padd_char = '%02X' % padd_length
-      for i in range(0, padd_length): self.plain_text += padd_char
-
-  def __plain_unpadding(self):
-    # remove pladding from plain text if exist
-    last_byte = self.plain_text[-2:]
-    idx_padding = 2*(int(last_byte, 16))
-    padding = self.plain_text[-1 * idx_padding:]
-    # check padding or not
-    is_padding = True
-    for i in range(0, len(padding), 2):
-      if padding[i]+padding[i+1] != last_byte:
-        is_padding = False
-        break
-    if is_padding: self.plain_text = self.plain_text[:-1 * idx_padding]
-
   def __key_padding(self):
     # padding the key
     key_length = len(self.key)
@@ -268,11 +247,17 @@ class Chill:
         idx_right_block += 2*BLOCK_SIZE_IN_HEX
         processed_block += 2
 
+  def __plain_pad(self, s):
+      return s + (32 - len(s) % 32) * chr(32 - len(s) % 32)
+
+  def __plain_unpad(self, s):
+      return s[:-ord(s[len(s)-1:])]
+
   def encrypt(self):
     # ENCRYPTION
     # preprocess
+    self.plain_text = self.__plain_pad(self.plain_text)
     self.plain_text = self.__to_hex(self.plain_text)
-    self.__plain_padding()
     self.cipher_text = ''
     # feistel
     self.__feistel('encrypt')
@@ -292,9 +277,9 @@ class Chill:
     self.plain_text = ''
     # feistel
     self.__feistel('decrypt')
-    # remove padding from plain text
-    self.__plain_unpadding()
     # convert plain text from hex to string
     self.plain_text = self.__from_hex(self.plain_text)
+    # remove padding from plain text
+    self.plain_text = self.__plain_unpad(self.plain_text)
     self.plain_text = self.plain_text.strip('\00')
     # result stored in self.plain_text
