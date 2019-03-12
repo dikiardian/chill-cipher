@@ -4,7 +4,8 @@ ch = Chill(plain_text_src='file',
 		   plain_text_path='../plain.txt',
 		   key='kunci gembok kuad',
 		   # mode='ECB',
-		   mode='CBC',
+		   # mode='CBC',
+		   mode='CFB',
 		   cipher_text_path= '../cipher.txt')
 
 print '-----------------------------'
