@@ -244,6 +244,7 @@ class Chill:
     self.plain_text = self.__plain_pad(self.plain_text)
     self.plain_text = self.__to_hex(self.plain_text)
     self.cipher_text = ''
+    # print self.plain_text
     # feistel
     # init feistel loop
     done = False
@@ -251,7 +252,7 @@ class Chill:
     idx_right_block = 0
     processed_block = 2
 
-    if self.mode in ['CBC', 'CFB']:
+    if self.mode in ['CBC', 'CFB', 'OFB']:
       self.cipher_text += self.IV
     # print 'iv'
     # print self.IV
@@ -260,7 +261,7 @@ class Chill:
       if self.mode in ['ECB', 'CBC']:
         right_block = self.plain_text[idx_right_block:idx_right_block+BLOCK_SIZE_IN_HEX]
         left_block = self.plain_text[idx_left_block:idx_left_block+BLOCK_SIZE_IN_HEX]
-      elif self.mode in ['CFB']:
+      elif self.mode in ['CFB', 'OFB']:
         right_block = self.IV[:BLOCK_SIZE_IN_HEX]
         left_block = self.IV[BLOCK_SIZE_IN_HEX:]
 
@@ -282,7 +283,12 @@ class Chill:
       # print 'ri_e, li_e'
       # print right_block, left_block
 
-      if self.mode == 'CFB':
+      if self.mode == 'OFB':
+        self.IV = right_block + left_block
+        # print 'iv'
+        # print self.IV
+
+      if self.mode in ['CFB', 'OFB']:
         right_block_IV = self.plain_text[idx_right_block:idx_right_block+BLOCK_SIZE_IN_HEX]
         left_block_IV = self.plain_text[idx_left_block:idx_left_block+BLOCK_SIZE_IN_HEX]
         # print 'rp, lp'
@@ -292,6 +298,7 @@ class Chill:
         # print 'rs, ls'
         # print right_block, left_block
       result = right_block + left_block
+
       if self.mode in ['CBC', 'CFB']:
         self.IV = result
 
@@ -323,6 +330,11 @@ class Chill:
     idx_right_block = 0
     processed_block = 2
 
+    if self.mode in ['OFB']:
+      self.IV = self.cipher_text[:BLOCK_SIZE_IN_HEX*2]
+      self.cipher_text = self.cipher_text[BLOCK_SIZE_IN_HEX*2:]
+
+    # print self.cipher_text
     while not done:
       if self.mode in ['CBC', 'CFB']:
         self.IV = self.cipher_text[-1*(idx_left_block*2+BLOCK_SIZE_IN_HEX*2)+idx_right_block : -1*(idx_left_block*2)+idx_right_block]
@@ -335,9 +347,12 @@ class Chill:
         else:
           right_block = self.cipher_text[-1*(idx_right_block+BLOCK_SIZE_IN_HEX) : -1*idx_right_block]
         left_block = self.cipher_text[-1*(idx_left_block+BLOCK_SIZE_IN_HEX) : -1*(idx_left_block)]
-      elif self.mode in ['CFB']:
+      elif self.mode in ['CFB', 'OFB']:
         right_block = self.IV[:BLOCK_SIZE_IN_HEX]
         left_block = self.IV[BLOCK_SIZE_IN_HEX:]
+
+      # print 'iv'
+      # print self.IV
 
       # print 'ri, li'
       # print right_block, left_block
@@ -347,12 +362,14 @@ class Chill:
       left_block_matrix = self.__transform_to_matrix(left_block)
       if self.mode in ['ECB', 'CBC']:
         left_block_matrix, right_block_matrix = self.__feistel('decrypt', left_block_matrix, right_block_matrix)
-      elif self.mode in ['CFB']:
+      elif self.mode in ['CFB', 'OFB']:
         left_block_matrix, right_block_matrix = self.__feistel('encrypt', left_block_matrix, right_block_matrix)
       left_block = self.__transform_to_string(left_block_matrix)
       right_block = self.__transform_to_string(right_block_matrix)
       # print 'ri_e, li_e'
       # print right_block, left_block
+
+      if self.mode == 'OFB': self.IV = right_block + left_block
 
       if self.mode == 'CBC':
         right_block_IV = self.IV[BLOCK_SIZE_IN_HEX:]
@@ -361,7 +378,19 @@ class Chill:
         right_block = self.__xor(right_block, right_block_IV)
         left_block = self.__xor(left_block, left_block_IV)
 
-      if self.mode == 'CFB':
+      if self.mode in ['OFB']:
+        right_block_IV = self.cipher_text[idx_right_block:(idx_right_block+BLOCK_SIZE_IN_HEX)]
+        left_block_IV = self.cipher_text[idx_left_block:(idx_left_block+BLOCK_SIZE_IN_HEX)]
+
+        # print 'rc, lc'
+        # print right_block_IV, left_block_IV
+        right_block = self.__xor(right_block, right_block_IV)
+        left_block = self.__xor(left_block, left_block_IV)
+        right_block, left_block = left_block, right_block
+        # print 'rs, ls'
+        # print right_block, left_block
+
+      if self.mode in ['CFB']:
         if idx_right_block == 0:
           right_block_IV = self.cipher_text[-1*(idx_right_block+BLOCK_SIZE_IN_HEX):]
         else:
@@ -377,7 +406,11 @@ class Chill:
         # print 'rs, ls'
         # print right_block, left_block
 
-      self.plain_text = left_block + right_block + self.plain_text
+      if self.mode in ['OFB']:
+        self.plain_text = self.plain_text + left_block + right_block
+      else:
+        self.plain_text = left_block + right_block + self.plain_text
+
       if processed_block == (len(self.cipher_text) / BLOCK_SIZE_IN_HEX): done = True
       if not done:
         idx_left_block += 2*BLOCK_SIZE_IN_HEX

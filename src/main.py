@@ -3,9 +3,10 @@ from chill import Chill
 ch = Chill(plain_text_src='file',
 		   plain_text_path='../plain.txt',
 		   key='kunci gembok kuad',
-		   # mode='ECB',
+		   mode='ECB',
 		   # mode='CBC',
-		   mode='CFB',
+		   # mode='CFB',
+		   # mode='OFB',
 		   cipher_text_path= '../cipher.txt')
 
 print '-----------------------------'
