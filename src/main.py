@@ -1,8 +1,9 @@
 from chill import Chill
+from collections import Counter
 
 ch = Chill(plain_text_src='file',
 		   plain_text_path='../plain.txt',
-		   key='kunci gembok kuad',
+		   key='itbganeshasepulu',
 		   # mode='ECB',
 		   # mode='CBC',
 		   # mode='CFB',
@@ -10,19 +11,12 @@ ch = Chill(plain_text_src='file',
 		   mode='CTR',
 		   cipher_text_path= '../cipher.txt')
 
-print '-----------------------------'
-print 'Plain text:'
-print len(ch.plain_text), ch.plain_text
-print '-----------------------------'
-
+p = Counter(ch.plain_text)
+print p
+for i in range(256):
+	print str(i) + '\t' + str(p[chr(i)])
 ch.encrypt()
-print 'Cipher text:'
-print len(ch.cipher_text), ch.cipher_text
-print '-----------------------------'
-
-# reset plain text for testing
-print 'Plain text:'
-ch.plain_text = ''
-ch.decrypt()
-print len(ch.plain_text), ch.plain_text
-print '-----------------------------'
+c = Counter(ch.cipher_text)
+print c
+for i in range(256):
+	print str(c[chr(i)])
